@@ -1,46 +1,63 @@
 import React, { useState, useEffect } from 'react';
-import { Shuffle, Sparkles, Lock, Copy, Check, Code } from 'lucide-react';
+import { Shuffle, Sparkles, Lock, Copy, Check, Code, Sun, Moon, ChevronDown, ChevronUp } from 'lucide-react';
 
 // Fonction de génération ultra-aléatoire (partagée)
-const generateUltraRandomNumber = async (digits) => {
+const generateUltraRandomNumber = async (digits, setSteps = null) => {
+  const stepsList = [];
+  
   const timestamp = performance.now();
+  stepsList.push(`🕐 Timestamp: ${timestamp}`);
+  
   const mouseEntropy = Math.random() * timestamp;
+  stepsList.push(`🖱️ Entropie souris: ${mouseEntropy}`);
   
   const cryptoArray = new Uint32Array(3);
   crypto.getRandomValues(cryptoArray);
   const cryptoEntropy = Array.from(cryptoArray).reduce((a, b) => a + b, 0);
+  stepsList.push(`🔐 Crypto API: ${cryptoEntropy}`);
   
   let mathEntropy = 0;
   for (let i = 0; i < 10; i++) {
     mathEntropy += Math.random() * Math.pow(10, i);
   }
+  stepsList.push(`🎲 Math entropy: ${mathEntropy}`);
   
   const now = new Date();
   const dateEntropy = now.getTime() + now.getMilliseconds() * now.getSeconds();
+  stepsList.push(`📅 Date entropy: ${dateEntropy}`);
   
   let seed = (timestamp * mouseEntropy + cryptoEntropy) / (mathEntropy + dateEntropy);
+  stepsList.push(`🧮 Seed initial: ${seed}`);
+  
   seed = (seed * 9301 + 49297) % 233280;
+  stepsList.push(`#️⃣ Hash 1: ${seed}`);
+  
   seed = seed ^ Date.now();
+  stepsList.push(`⚡ XOR timestamp: ${seed}`);
   
   const a = 16807;
   const m = 2147483647;
   seed = (a * seed) % m;
+  stepsList.push(`🔢 Lehmer: ${seed}`);
   
   for (let i = 0; i < 5; i++) {
     seed = ((seed << 13) ^ seed) >>> 0;
     seed = ((seed >> 17) ^ seed) >>> 0;
     seed = ((seed << 5) ^ seed) >>> 0;
   }
+  stepsList.push(`🔄 Rotations binaires: ${seed}`);
   
   const primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31];
   let primeHash = seed;
   primes.forEach((p, i) => {
     primeHash = (primeHash * p + i) % 999999999;
   });
+  stepsList.push(`🔢 Prime hash: ${primeHash}`);
   
   const finalCrypto = new Uint32Array(1);
   crypto.getRandomValues(finalCrypto);
   const finalSeed = (primeHash + finalCrypto[0]) % Number.MAX_SAFE_INTEGER;
+  stepsList.push(`🎯 Seed final: ${finalSeed}`);
   
   let finalNumber = '';
   let currentSeed = finalSeed;
@@ -55,58 +72,20 @@ const generateUltraRandomNumber = async (digits) => {
     
     const digit = (mathDigit + cryptoMod) % 10;
     finalNumber += digit;
+    stepsList.push(`✨ Génération chiffre ${i + 1}: ${digit}`);
+    
+    if (setSteps) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+      setSteps([...stepsList]);
+    }
+  }
+  
+  stepsList.push(`✅ Nombre final: ${finalNumber}`);
+  if (setSteps) {
+    setSteps(stepsList);
   }
   
   return finalNumber;
-};
-
-// Composant API
-const ApiView = () => {
-  const [apiResult, setApiResult] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const handleApiRequest = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const digits = parseInt(params.get('nmb')) || 6;
-      
-      if (digits < 1 || digits > 50) {
-        setApiResult({
-          error: "Le paramètre 'nmb' doit être entre 1 et 50",
-          code: 400
-        });
-        setLoading(false);
-        return;
-      }
-      
-      const number = await generateUltraRandomNumber(digits);
-      setApiResult({
-        success: true,
-        number: number,
-        digits: digits,
-        timestamp: new Date().toISOString()
-      });
-      setLoading(false);
-    };
-
-    handleApiRequest();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white text-xl">Génération...</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-900 text-white font-mono p-4">
-      <pre className="max-w-2xl mx-auto mt-20 bg-gray-800 p-6 rounded-lg overflow-auto">
-        {JSON.stringify(apiResult, null, 2)}
-      </pre>
-    </div>
-  );
 };
 
 // Composant principal UI
@@ -116,6 +95,8 @@ const UltraRandomGenerator = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isDark, setIsDark] = useState(false);
+  const [steps, setSteps] = useState([]);
+  const [showSteps, setShowSteps] = useState(false);
 
   // Détecter le thème système
   useEffect(() => {
@@ -127,12 +108,43 @@ const UltraRandomGenerator = () => {
     return () => darkModeQuery.removeEventListener('change', handler);
   }, []);
 
+  // Vérifier si on est sur /api
+  useEffect(() => {
+    if (window.location.pathname === '/api') {
+      handleApiRequest();
+    }
+  }, []);
+
+  const handleApiRequest = async () => {
+    const params = new URLSearchParams(window.location.search);
+    const apiDigits = parseInt(params.get('nmb')) || 6;
+    
+    if (apiDigits < 1 || apiDigits > 50) {
+      document.body.innerHTML = `<pre style="font-family: monospace; padding: 20px; background: #1a1a1a; color: white; margin: 20px;">${JSON.stringify({
+        error: "Le paramètre 'nmb' doit être entre 1 et 50",
+        code: 400
+      }, null, 2)}</pre>`;
+      return;
+    }
+    
+    const number = await generateUltraRandomNumber(apiDigits);
+    const response = {
+      success: true,
+      number: number,
+      digits: apiDigits,
+      timestamp: new Date().toISOString()
+    };
+    
+    document.body.innerHTML = `<pre style="font-family: monospace; padding: 20px; background: #1a1a1a; color: white; margin: 20px;">${JSON.stringify(response, null, 2)}</pre>`;
+  };
+
   const handleGenerate = async () => {
     setIsGenerating(true);
     setCopied(false);
     setResult('');
+    setSteps([]);
     
-    const finalNumber = await generateUltraRandomNumber(digits);
+    const finalNumber = await generateUltraRandomNumber(digits, setSteps);
     
     // Animation du résultat
     for (let i = 0; i < finalNumber.length; i++) {
@@ -147,6 +159,10 @@ const UltraRandomGenerator = () => {
     await navigator.clipboard.writeText(result);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const toggleTheme = () => {
+    setIsDark(!isDark);
   };
 
   const bgClass = isDark 
@@ -164,7 +180,22 @@ const UltraRandomGenerator = () => {
     : 'bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700';
 
   return (
-    <div className={`min-h-screen ${bgClass} p-8 transition-colors duration-300`}>
+    <div className={`min-h-screen ${bgClass} p-8 transition-colors duration-300 relative`}>
+      {/* Bouton de thème (coin supérieur droit, discret) */}
+      <button
+        onClick={toggleTheme}
+        className={`fixed top-4 right-4 p-2 rounded-full ${
+          isDark ? 'bg-gray-700/50 hover:bg-gray-600/50' : 'bg-white/50 hover:bg-white/70'
+        } backdrop-blur-sm transition-all duration-200 opacity-40 hover:opacity-100 z-50`}
+        title="Changer de thème"
+      >
+        {isDark ? (
+          <Sun className="w-5 h-5 text-yellow-400" />
+        ) : (
+          <Moon className="w-5 h-5 text-indigo-600" />
+        )}
+      </button>
+
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="text-center mb-12">
@@ -264,6 +295,47 @@ const UltraRandomGenerator = () => {
               </div>
             </div>
           )}
+
+          {/* Toggle Steps (bouton discret) */}
+          {steps.length > 0 && (
+            <button
+              onClick={() => setShowSteps(!showSteps)}
+              className={`w-full mt-6 ${
+                isDark ? 'bg-gray-700/50 hover:bg-gray-700/70' : 'bg-gray-100 hover:bg-gray-200'
+              } ${textSecondaryClass} py-2 px-4 rounded-lg transition-all duration-200 text-sm flex items-center justify-center gap-2 opacity-60 hover:opacity-100`}
+            >
+              {showSteps ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              {showSteps ? 'Masquer' : 'Afficher'} les étapes de génération ({steps.length})
+            </button>
+          )}
+
+          {/* Steps Display */}
+          {showSteps && steps.length > 0 && (
+            <div className={`mt-4 ${
+              isDark ? 'bg-gray-900/50' : 'bg-gray-50'
+            } backdrop-blur rounded-2xl p-6 border ${
+              isDark ? 'border-gray-700' : 'border-gray-200'
+            } max-h-96 overflow-y-auto`}>
+              <h3 className={`text-lg font-bold ${textClass} mb-4 flex items-center gap-2`}>
+                <Sparkles className={`w-5 h-5 ${isDark ? 'text-yellow-400' : 'text-yellow-500'}`} />
+                Processus de génération
+              </h3>
+              <div className="space-y-2">
+                {steps.map((step, index) => (
+                  <div
+                    key={index}
+                    className={`${textSecondaryClass} font-mono text-xs ${
+                      isDark ? 'bg-gray-800/50' : 'bg-white/50'
+                    } p-3 rounded-lg`}
+                  >
+                    <span className={`${isDark ? 'text-yellow-400' : 'text-yellow-600'} font-bold`}>
+                      #{index + 1}
+                    </span> {step}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* API Documentation */}
@@ -328,11 +400,4 @@ const UltraRandomGenerator = () => {
   );
 };
 
-// Router simple
-const App = () => {
-  const isApiRoute = window.location.pathname === '/api';
-  
-  return isApiRoute ? <ApiView /> : <UltraRandomGenerator />;
-};
-
-export default App;
+export default UltraRandomGenerator;
